@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Order · DineAtDesk</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: { display: ['Poppins','sans-serif'], sans: ['Inter','sans-serif'], mono: ['JetBrains Mono','monospace'] },
+      colors: { ink: '#1F2937', cream: '#FAF7F1', amber: { DEFAULT: '#B45309', dark: '#92400E' } }
+    }}
+  }
+</script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-cream min-h-screen">
+
+  <header class="bg-ink text-white py-4 px-5 text-center">
+    <p class="font-display font-bold text-xl text-amber-400">DineAtDesk</p>
+    <p class="text-xs text-gray-400 mt-0.5">Order from your table</p>
+  </header>
+
+  <main class="max-w-md mx-auto p-4 pb-24">
+
+    <section id="step-table">
+      <h2 class="font-display font-semibold text-ink text-lg mt-4 mb-3">Which table are you at?</h2>
+      <div id="table-select" class="grid grid-cols-3 gap-3">Loading tables…</div>
+    </section>
+
+    <section id="step-menu" class="hidden">
+      <div class="flex items-center justify-between mt-4 mb-3">
+        <h2 class="font-display font-semibold text-ink text-lg">Table <span id="chosen-table"></span> — Menu</h2>
+        <button onclick="backToTables()" class="text-xs text-amber-700 font-semibold">Change table</button>
+      </div>
+      <div id="menu-list" class="space-y-2 bg-white rounded-xl p-4"></div>
+    </section>
+
+    <section id="step-tracking" class="hidden mt-4">
+      <div class="ticket-card p-5 text-center">
+        <p class="text-xs text-slate-500 font-mono-tag">Order #<span id="track-order-id"></span> · Table <span id="track-table"></span></p>
+        <h2 class="font-display font-bold text-xl text-ink mt-2 mb-4">Order status</h2>
+
+        <div class="flex items-center justify-between max-w-xs mx-auto mb-2">
+          <div class="track-step" data-status="pending"><div class="step-dot">1</div><p class="text-[10px] mt-1">Placed</p></div>
+          <div class="track-line"></div>
+          <div class="track-step" data-status="preparing"><div class="step-dot">2</div><p class="text-[10px] mt-1">Cooking</p></div>
+          <div class="track-line"></div>
+          <div class="track-step" data-status="served"><div class="step-dot">3</div><p class="text-[10px] mt-1">Served</p></div>
+          <div class="track-line"></div>
+          <div class="track-step" data-status="paid"><div class="step-dot">4</div><p class="text-[10px] mt-1">Paid</p></div>
+        </div>
+
+        <p id="track-message" class="text-sm text-slate-500 mt-4">Waiting for the kitchen to confirm your order…</p>
+      </div>
+
+      <div id="bill-panel" class="hidden ticket-card p-5 mt-4 text-center">
+        <p class="font-display font-semibold text-ink mb-2">Your bill</p>
+        <p id="bill-total" class="font-display font-bold text-2xl text-ink mb-4">—</p>
+        <div id="pay-buttons" class="grid grid-cols-3 gap-2">
+          <button onclick="payBill('cash')" class="border border-gray-300 hover:border-amber-500 text-xs font-semibold py-2 rounded-lg">Cash</button>
+          <button onclick="payBill('card')" class="border border-gray-300 hover:border-amber-500 text-xs font-semibold py-2 rounded-lg">Card</button>
+          <button onclick="payBill('upi')" class="border border-gray-300 hover:border-amber-500 text-xs font-semibold py-2 rounded-lg">UPI</button>
+        </div>
+        <div id="paid-stamp" class="hidden mt-2">
+          <span class="stamp-paid">PAID</span>
+          <p class="text-sm text-slate-500 mt-3">Thank you! 🎉</p>
+          <button onclick="startNewOrder()" class="mt-3 text-xs text-amber-700 font-semibold">Place another order</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="cart-bar" class="hidden fixed bottom-0 left-0 right-0 bg-ink text-white px-5 py-4 flex items-center justify-between">
+    <div>
+      <p class="text-xs text-gray-400">Items: <span id="cart-count">0</span></p>
+      <p class="font-semibold" id="cart-total">₹0.00</p>
+    </div>
+    <button onclick="submitOrder()" class="bg-amber hover:bg-amber-dark text-white text-sm font-semibold px-5 py-2.5 rounded-lg">
+      Place order
+    </button>
+  </div>
+
+<style>
+  .track-step { display:flex; flex-direction:column; align-items:center; opacity:0.35; }
+  .track-step.done { opacity:1; }
+  .step-dot { width:28px; height:28px; border-radius:9999px; background:#E5E7EB; color:#6B7280; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; }
+  .track-step.done .step-dot { background:#B45309; color:white; }
+  .track-line { flex:1; height:2px; background:#E5E7EB; margin:0 4px; margin-bottom:16px; }
+</style>
+
+<script>
+const API_BASE = '../backend/api';
+const STATUS_ORDER = ['pending', 'preparing', 'served', 'paid'];
+let selectedTableId = null, selectedTableNumber = null;
+let cart = {};
+let activeOrderId = localStorage.getItem('dd_order_id');
+let activeToken = localStorage.getItem('dd_token');
+let trackTimer = null;
+
+async function apiFetch(path, options = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Something went wrong');
+  return data;
+}
+
+function formatMoney(n) { return '₹' + Number(n).toFixed(2); }
+
+async function loadTables() {
+  try {
+    const tables = await apiFetch('/tables.php');
+    document.getElementById('table-select').innerHTML = tables.map(t => `
+      <button onclick="chooseTable(${t.id}, '${t.table_number}')"
+        class="border-2 border-gray-200 hover:border-amber-500 rounded-xl py-4 font-display font-bold text-ink">
+        ${t.table_number}
+      </button>
+    `).join('');
+  } catch (e) {
+    document.getElementById('table-select').innerHTML = `<p class="text-red-600 text-sm col-span-3">Couldn't load tables. Ask staff for help.</p>`;
+  }
+}
+
+function chooseTable(id, number) {
+  selectedTableId = id;
+  selectedTableNumber = number;
+  document.getElementById('chosen-table').textContent = number;
+  document.getElementById('step-table').classList.add('hidden');
+  document.getElementById('step-menu').classList.remove('hidden');
+  document.getElementById('cart-bar').classList.remove('hidden');
+  loadMenu();
+}
+
+function backToTables() {
+  document.getElementById('step-table').classList.remove('hidden');
+  document.getElementById('step-menu').classList.add('hidden');
+  document.getElementById('cart-bar').classList.add('hidden');
+  cart = {};
+}
+
+async function loadMenu() {
+  try {
+    const items = await apiFetch('/menu.php');
+    const available = items.filter(i => i.is_available);
+    document.getElementById('menu-list').innerHTML = available.map(item => `
+      <div class="flex items-center justify-between py-2 border-b border-gray-100">
+        <div>
+          <p class="text-sm font-medium text-ink">${item.name}</p>
+          <p class="text-xs text-slate-500 font-mono-tag">${formatMoney(item.price)}</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="adjustQty(${item.id}, '${item.name.replace(/'/g,"\\'")}', ${item.price}, -1)" class="w-7 h-7 rounded-full bg-gray-100 font-bold">−</button>
+          <span id="qty-${item.id}" class="w-5 text-center text-sm">0</span>
+          <button onclick="adjustQty(${item.id}, '${item.name.replace(/'/g,"\\'")}', ${item.price}, 1)" class="w-7 h-7 rounded-full bg-amber-100 text-amber-800 font-bold">+</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) { alert(e.message); }
+}
+
+function adjustQty(id, name, price, delta) {
+  if (!cart[id]) cart[id] = { name, price, quantity: 0 };
+  cart[id].quantity = Math.max(0, cart[id].quantity + delta);
+  document.getElementById(`qty-${id}`).textContent = cart[id].quantity;
+  updateCartBar();
+}
+
+function updateCartBar() {
+  const entries = Object.values(cart).filter(c => c.quantity > 0);
+  const count = entries.reduce((s, c) => s + c.quantity, 0);
+  const total = entries.reduce((s, c) => s + c.quantity * c.price, 0);
+  document.getElementById('cart-count').textContent = count;
+  document.getElementById('cart-total').textContent = formatMoney(total);
+}
+
+let placingOrder = false;
+async function submitOrder() {
+  if (placingOrder) return;
+  const items = Object.entries(cart).filter(([,c]) => c.quantity > 0).map(([id,c]) => ({ menu_item_id: Number(id), quantity: c.quantity }));
+  if (items.length === 0) { alert('Add at least one item first.'); return; }
+
+  placingOrder = true;
+  try {
+    const result = await apiFetch('/orders.php', {
+      method: 'POST',
+      body: JSON.stringify({ table_id: selectedTableId, items, guest: true }),
+    });
+    activeOrderId = result.id;
+    activeToken = result.token;
+    localStorage.setItem('dd_order_id', activeOrderId);
+    localStorage.setItem('dd_token', activeToken);
+    localStorage.setItem('dd_table_number', selectedTableNumber);
+
+    document.getElementById('step-menu').classList.add('hidden');
+    document.getElementById('cart-bar').classList.add('hidden');
+    startTracking();
+  } catch (e) { alert(e.message); }
+  finally { placingOrder = false; }
+}
+
+function startTracking() {
+  document.getElementById('step-table').classList.add('hidden');
+  document.getElementById('step-menu').classList.add('hidden');
+  document.getElementById('cart-bar').classList.add('hidden');
+  document.getElementById('step-tracking').classList.remove('hidden');
+  document.getElementById('track-order-id').textContent = activeOrderId;
+  document.getElementById('track-table').textContent = localStorage.getItem('dd_table_number') || selectedTableNumber || '';
+  pollOrder();
+  trackTimer = setInterval(pollOrder, 5000);
+}
+
+async function pollOrder() {
+  try {
+    const order = await apiFetch(`/orders.php?id=${activeOrderId}&token=${activeToken}`);
+    renderTrackingStatus(order.status);
+    if (order.status === 'served' || order.status === 'paid') {
+      loadBillPanel();
+    }
+  } catch (e) {
+    clearInterval(trackTimer);
+    document.getElementById('track-message').innerHTML = `
+      This order is no longer valid.<br>
+      <button onclick="startNewOrder()" class="mt-3 text-amber-700 font-semibold underline">Start a new order</button>`;
+  }
+}
+
+function renderTrackingStatus(status) {
+  const idx = STATUS_ORDER.indexOf(status === 'cancelled' ? 'pending' : status);
+  document.querySelectorAll('.track-step').forEach(el => {
+    const stepIdx = STATUS_ORDER.indexOf(el.dataset.status);
+    el.classList.toggle('done', stepIdx <= idx);
+  });
+  const messages = {
+    pending: 'Waiting for the kitchen to confirm your order…',
+    preparing: 'Your food is being prepared 🍳',
+    served: 'Served! Ready for billing whenever you are.',
+    paid: 'Payment received — thank you!',
+    cancelled: 'This order was cancelled by staff.',
+  };
+  document.getElementById('track-message').textContent = messages[status] || '';
+}
+
+let activeBillId = null;
+async function loadBillPanel() {
+  try {
+    const bill = await apiFetch(`/bills.php?order_id=${activeOrderId}&token=${activeToken}`);
+    activeBillId = bill.id;
+    document.getElementById('bill-panel').classList.remove('hidden');
+    document.getElementById('bill-total').textContent = formatMoney(bill.total);
+    if (bill.is_paid) {
+      document.getElementById('pay-buttons').classList.add('hidden');
+      document.getElementById('paid-stamp').classList.remove('hidden');
+      clearInterval(trackTimer);
+    }
+  } catch (e) {
+    // No bill generated by staff yet — keep polling silently
+  }
+}
+
+let payingBill = false;
+async function payBill(method) {
+  if (payingBill || !activeBillId) return;
+  payingBill = true;
+  try {
+    await apiFetch(`/bills.php?id=${activeBillId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ payment_method: method, token: activeToken }),
+    });
+    document.getElementById('pay-buttons').classList.add('hidden');
+    document.getElementById('paid-stamp').classList.remove('hidden');
+    clearInterval(trackTimer);
+  } catch (e) { alert(e.message); }
+  finally { payingBill = false; }
+}
+
+function startNewOrder() {
+  localStorage.removeItem('dd_order_id');
+  localStorage.removeItem('dd_token');
+  localStorage.removeItem('dd_table_number');
+  window.location.reload();
+}
+
+(function init() {
+  if (activeOrderId && activeToken) {
+    startTracking();
+  } else {
+    loadTables();
+  }
+})();
+</script>
+</body>
+</html>

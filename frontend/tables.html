@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tables · DineAtDesk</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: { display: ['Poppins','sans-serif'], sans: ['Inter','sans-serif'], mono: ['JetBrains Mono','monospace'] },
+      colors: { ink: '#1F2937', cream: '#FAF7F1', amber: { DEFAULT: '#B45309', dark: '#92400E' } }
+    }}
+  }
+</script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-cream">
+  <div class="flex">
+    <div id="sidebar-mount"></div>
+
+    <main class="flex-1 p-8 max-w-6xl h-screen overflow-y-auto">
+      <h1 class="font-display font-bold text-2xl text-ink mb-1">Tables</h1>
+      <p class="text-slate-500 text-sm mb-8">Tap a free table to start an order, or manage status directly.</p>
+
+      <div id="tables-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        <p class="text-slate-400 text-sm">Loading…</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- New order modal -->
+  <div id="order-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-40 p-4">
+    <div class="bg-white rounded-xl w-full max-w-lg max-h-[85vh] flex flex-col">
+      <div class="px-6 py-4 border-b flex items-center justify-between">
+        <h3 class="font-display font-semibold text-lg text-ink">New order — <span id="modal-table-label"></span></h3>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
+      </div>
+      <div id="modal-menu-list" class="overflow-y-auto p-6 space-y-2 flex-1"></div>
+      <div class="px-6 py-4 border-t bg-gray-50 flex items-center justify-between rounded-b-xl">
+        <p class="text-sm text-slate-600">Items selected: <span id="modal-count" class="font-semibold">0</span></p>
+        <button onclick="submitOrder()" class="bg-amber hover:bg-amber-dark text-white text-sm font-semibold px-5 py-2.5 rounded-lg">
+          Send to kitchen
+        </button>
+      </div>
+    </div>
+  </div>
+
+<script src="js/common.js"></script>
+<script>
+let currentUser = null;
+let selectedTableId = null;
+let cart = {}; // menu_item_id -> {quantity, name, price}
+
+async function loadTables() {
+  try {
+    const tables = await apiFetch('/tables.php');
+    const grid = document.getElementById('tables-grid');
+    grid.innerHTML = tables.map(renderTableCard).join('');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function statusStyles(status) {
+  return {
+    free: 'bg-green-50 border-green-200 text-green-700',
+    occupied: 'bg-amber-50 border-amber-300 text-amber-800',
+    reserved: 'bg-blue-50 border-blue-200 text-blue-700',
+  }[status];
+}
+
+function renderTableCard(t) {
+  return `
+    <div class="ticket-card p-5 border-2 ${statusStyles(t.status)} cursor-pointer" onclick="handleTableClick(${t.id}, '${t.table_number}', '${t.status}')">
+      <p class="font-display font-bold text-2xl">${t.table_number}</p>
+      <p class="text-xs mt-1">${t.capacity} seats</p>
+      <p class="text-xs font-semibold uppercase tracking-wide mt-3">${t.status}</p>
+    </div>
+  `;
+}
+
+function handleTableClick(id, number, status) {
+  if (status === 'free') {
+    openOrderModal(id, number);
+  } else {
+    // Quick status cycle for occupied/reserved tables (manual override)
+    const next = status === 'occupied' ? 'reserved' : 'free';
+    if (confirm(`Change Table ${number} status to "${next}"?`)) {
+      apiFetch(`/tables.php?id=${id}`, { method: 'PUT', body: JSON.stringify({ status: next }) })
+        .then(() => { toast('Table status updated'); loadTables(); })
+        .catch(e => toast(e.message, 'error'));
+    }
+  }
+}
+
+async function openOrderModal(tableId, tableNumber) {
+  selectedTableId = tableId;
+  cart = {};
+  document.getElementById('modal-table-label').textContent = tableNumber;
+  document.getElementById('modal-count').textContent = '0';
+
+  try {
+    const items = await apiFetch('/menu.php');
+    const available = items.filter(i => i.is_available);
+    document.getElementById('modal-menu-list').innerHTML = available.map(item => `
+      <div class="flex items-center justify-between py-2 border-b border-gray-100">
+        <div>
+          <p class="text-sm font-medium text-ink">${item.name}</p>
+          <p class="text-xs text-slate-500 font-mono-tag">${formatMoney(item.price)}</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="adjustQty(${item.id}, '${item.name.replace(/'/g,"\\'")}', ${item.price}, -1)" class="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 text-sm font-bold">−</button>
+          <span id="qty-${item.id}" class="w-5 text-center text-sm">0</span>
+          <button onclick="adjustQty(${item.id}, '${item.name.replace(/'/g,"\\'")}', ${item.price}, 1)" class="w-7 h-7 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-800 text-sm font-bold">+</button>
+        </div>
+      </div>
+    `).join('');
+    document.getElementById('order-modal').classList.remove('hidden');
+    document.getElementById('order-modal').classList.add('flex');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function adjustQty(id, name, price, delta) {
+  if (!cart[id]) cart[id] = { quantity: 0, name, price };
+  cart[id].quantity = Math.max(0, cart[id].quantity + delta);
+  document.getElementById(`qty-${id}`).textContent = cart[id].quantity;
+
+  const totalCount = Object.values(cart).reduce((s, c) => s + c.quantity, 0);
+  document.getElementById('modal-count').textContent = totalCount;
+}
+
+function closeModal() {
+  document.getElementById('order-modal').classList.add('hidden');
+  document.getElementById('order-modal').classList.remove('flex');
+}
+
+async function submitOrder() {
+  const items = Object.entries(cart)
+    .filter(([, v]) => v.quantity > 0)
+    .map(([id, v]) => ({ menu_item_id: Number(id), quantity: v.quantity }));
+
+  if (items.length === 0) { toast('Select at least one item', 'error'); return; }
+
+  try {
+    await apiFetch('/orders.php', {
+      method: 'POST',
+      body: JSON.stringify({ table_id: selectedTableId, items }),
+    });
+    toast('Order sent to kitchen');
+    closeModal();
+    loadTables();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+(async function init() {
+  currentUser = await requireAuth();
+  loadTables();
+})();
+</script>
+</body>
+</html>

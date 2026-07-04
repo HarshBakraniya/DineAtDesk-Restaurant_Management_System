@@ -1,0 +1,159 @@
+/* ============================================================
+   Restaurant Management System — Custom design layer
+   Tailwind handles utility classes; this file holds the
+   brand-specific signature details Tailwind can't express directly.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
+
+:root {
+  --ink: #1F2937;
+  --cream: #FAF7F1;
+  --amber: #B45309;
+  --amber-dark: #92400E;
+  --green: #15803D;
+  --red: #B91C1C;
+  --slate: #4B5563;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--cream);
+}
+
+.font-display {
+  font-family: 'Poppins', sans-serif;
+}
+
+.font-mono-tag {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ---- Signature element: order-ticket card with a torn/perforated edge,
+   evoking a kitchen order slip ---- */
+.ticket-card {
+  position: relative;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(31,41,55,0.08), 0 1px 2px rgba(31,41,55,0.06);
+}
+
+.ticket-card::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 12px;
+  right: 12px;
+  height: 12px;
+  background-image: radial-gradient(circle, var(--cream) 3.2px, transparent 3.2px);
+  background-size: 12px 12px;
+  background-position: 0 0;
+  background-repeat: repeat-x;
+}
+
+/* ---- Signature element: rotated "PAID" stamp ---- */
+.stamp-paid {
+  display: inline-block;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--green);
+  border: 3px solid var(--green);
+  border-radius: 8px;
+  padding: 4px 14px;
+  transform: rotate(-8deg);
+  opacity: 0.9;
+}
+
+.stamp-unpaid {
+  display: inline-block;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--red);
+  border: 3px solid var(--red);
+  border-radius: 8px;
+  padding: 4px 14px;
+  transform: rotate(-8deg);
+  opacity: 0.85;
+}
+
+/* Status left-border accents for kanban-style order cards */
+.status-pending   { border-left: 4px solid #D97706; }
+.status-preparing { border-left: 4px solid #2563EB; }
+.status-served    { border-left: 4px solid #15803D; }
+.status-paid      { border-left: 4px solid #6B7280; }
+.status-cancelled { border-left: 4px solid #B91C1C; }
+
+/* Sidebar active link */
+.nav-link {
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.nav-link.active {
+  background-color: rgba(180, 83, 9, 0.16);
+  color: #FDE68A;
+  border-left: 3px solid var(--amber);
+}
+
+/* Simple fade-in for dynamically injected content */
+.fade-in { animation: fadeIn 0.25s ease-in; }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Scrollbar tidy-up for kanban columns */
+.kanban-col::-webkit-scrollbar { width: 6px; }
+.kanban-col::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 4px; }
+
+
+/* ============================================================
+   Site-wide mobile responsiveness
+   Applies to screens 768px and narrower (phones, small tablets)
+   ============================================================ */
+@media (max-width: 768px) {
+
+  main {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 14px !important;
+    padding-top: 76px !important;
+    height: auto !important;
+  }
+
+  #tables-grid,
+  #orders-preview,
+  #menu-list,
+  #bills-list,
+  #table-select {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .grid.lg\:grid-cols-3 {
+    grid-template-columns: 1fr !important;
+  }
+  #col-pending, #col-preparing, #col-served {
+    max-height: none !important;
+  }
+
+  #order-modal > div,
+  #form-modal > div,
+  #bill-modal > div {
+    width: 92vw !important;
+    max-width: 92vw !important;
+  }
+
+  h1 { font-size: 1.35rem !important; }
+  h2 { font-size: 1.1rem !important; }
+}
+
+/* ---- Very small phones (under 400px): tighten further ---- */
+@media (max-width: 400px) {
+  #tables-grid, #table-select {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  main { 
+    padding: 12px !important;
+    padding-top: 76px !important;
+   }
+}

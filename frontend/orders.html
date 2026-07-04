@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orders · DineAtDesk</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: { display: ['Poppins','sans-serif'], sans: ['Inter','sans-serif'], mono: ['JetBrains Mono','monospace'] },
+      colors: { ink: '#1F2937', cream: '#FAF7F1', amber: { DEFAULT: '#B45309', dark: '#92400E' } }
+    }}
+  }
+</script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-cream">
+  <div class="flex">
+    <div id="sidebar-mount"></div>
+
+    <main class="flex-1 p-8 max-w-6xl h-screen overflow-y-auto">
+      <div class="flex items-center justify-between mb-1">
+        <h1 class="font-display font-bold text-2xl text-ink">Order Board</h1>
+        <button onclick="loadOrders()" class="text-xs font-semibold text-amber-700 hover:text-amber-800 flex items-center gap-1">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          Refresh
+        </button>
+      </div>
+      <p class="text-slate-500 text-sm mb-8">Orders move left to right as the kitchen and floor progress them. Auto-refreshes every 15s.</p>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div>
+          <h2 class="text-sm font-bold uppercase tracking-wide text-amber-700 mb-3 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-amber-500"></span> Pending
+          </h2>
+          <div id="col-pending" class="kanban-col space-y-3 max-h-[70vh] overflow-y-auto pr-1"></div>
+        </div>
+        <div>
+          <h2 class="text-sm font-bold uppercase tracking-wide text-blue-700 mb-3 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-blue-500"></span> Preparing
+          </h2>
+          <div id="col-preparing" class="kanban-col space-y-3 max-h-[70vh] overflow-y-auto pr-1"></div>
+        </div>
+        <div>
+          <h2 class="text-sm font-bold uppercase tracking-wide text-green-700 mb-3 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-green-600"></span> Served
+          </h2>
+          <div id="col-served" class="kanban-col space-y-3 max-h-[70vh] overflow-y-auto pr-1"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+<script src="js/common.js"></script>
+<script>
+const NEXT_STATUS = { pending: 'preparing', preparing: 'served' };
+const NEXT_LABEL = { pending: 'Start preparing', preparing: 'Mark served' };
+
+function orderCard(o) {
+  const nextStatus = NEXT_STATUS[o.status];
+  const actionBtn = nextStatus ? `
+    <button onclick="advanceOrder(${o.id}, '${nextStatus}')"
+      class="w-full mt-3 bg-ink hover:bg-black text-white text-xs font-semibold py-2 rounded-lg">
+      ${NEXT_LABEL[o.status]} →
+    </button>` : `
+    <p class="mt-3 text-xs text-green-700 font-semibold">Ready for billing</p>`;
+
+  return `
+    <div class="ticket-card p-4 status-${o.status} fade-in">
+      <div class="flex items-center justify-between mb-1">
+        <span class="font-mono-tag text-xs text-slate-500">#${o.id}</span>
+        <span class="text-xs text-slate-400">${timeAgo(o.created_at)}</span>
+      </div>
+      <p class="font-semibold text-ink">Table ${o.table_number}</p>
+      <p class="text-xs text-slate-500">${o.waiter_name} · ${formatMoney(o.order_total)}</p>
+      ${actionBtn}
+    </div>
+  `;
+}
+
+async function loadOrders() {
+  try {
+    const orders = await apiFetch('/orders.php');
+    const cols = { pending: [], preparing: [], served: [] };
+    orders.forEach(o => { if (cols[o.status]) cols[o.status].push(o); });
+
+    for (const status of ['pending', 'preparing', 'served']) {
+      const el = document.getElementById(`col-${status}`);
+      el.innerHTML = cols[status].length
+        ? cols[status].map(orderCard).join('')
+        : `<p class="text-slate-400 text-xs italic">No orders</p>`;
+    }
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function advanceOrder(id, status) {
+  try {
+    await apiFetch(`/orders.php?id=${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+    toast(`Order #${id} moved to ${status}`);
+    loadOrders();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+(async function init() {
+  await requireAuth();
+  loadOrders();
+  setInterval(loadOrders, 15000);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in · DineAtDesk</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          display: ['Poppins', 'sans-serif'],
+          sans: ['Inter', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+        },
+        colors: {
+          ink: '#1F2937',
+          cream: '#FAF7F1',
+          amber: { DEFAULT: '#B45309', dark: '#92400E' },
+        }
+      }
+    }
+  }
+</script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="min-h-screen bg-ink flex items-center justify-center px-4">
+
+  <div class="w-full max-w-sm">
+    <div class="text-center mb-8">
+      <p class="font-display font-bold text-3xl text-amber-400">DineAt<span class="text-white">Desk</span></p>
+      <p class="text-gray-400 text-sm mt-1">Staff sign-in for floor operations</p>
+    </div>
+
+    <div class="ticket-card p-8 pt-9">
+      <form id="login-form" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Email</label>
+          <input type="email" id="email" required autocomplete="username"
+                 class="w-full px-3.5 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-sm"
+                 placeholder="you@restaurant.test">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Password</label>
+          <input type="password" id="password" required autocomplete="current-password"
+                 class="w-full px-3.5 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-sm"
+                 placeholder="••••••••">
+        </div>
+
+        <p id="error-msg" class="text-red-600 text-sm hidden"></p>
+
+        <button type="submit" id="submit-btn"
+                class="w-full bg-amber hover:bg-amber-dark text-white font-semibold text-sm py-2.5 rounded-lg transition-colors">
+          Sign in
+        </button>
+      </form>
+    </div>
+
+    <div class="mt-6 bg-white/5 rounded-lg p-4 text-xs text-gray-400 font-mono">
+      <p class="text-gray-300 font-semibold mb-1">Demo accounts (password: password123)</p>
+      admin@restaurant.test · manager@restaurant.test<br>
+      waiter@restaurant.test · kitchen@restaurant.test
+    </div>
+
+    <div class="mt-4 text-center">
+      <a href="customer.html" class="text-sm text-amber-400 hover:text-amber-300 font-semibold">
+        Ordering as a customer? Tap here →
+      </a>
+    </div>
+  </div>
+
+<script>
+const API_BASE = '../backend/api';
+const form = document.getElementById('login-form');
+const errorMsg = document.getElementById('error-msg');
+const submitBtn = document.getElementById('submit-btn');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errorMsg.classList.add('hidden');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Signing in…';
+
+  try {
+    const res = await fetch(`${API_BASE}/auth.php?action=login`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: document.getElementById('email').value.trim(),
+        password: document.getElementById('password').value,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Login failed');
+
+    window.location.href = 'dashboard.html';
+  } catch (err) {
+    errorMsg.textContent = err.message;
+    errorMsg.classList.remove('hidden');
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Sign in';
+  }
+});
+</script>
+</body>
+</html>

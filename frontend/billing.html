@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Billing · DineAtDesk</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: { display: ['Poppins','sans-serif'], sans: ['Inter','sans-serif'], mono: ['JetBrains Mono','monospace'] },
+      colors: { ink: '#1F2937', cream: '#FAF7F1', amber: { DEFAULT: '#B45309', dark: '#92400E' } }
+    }}
+  }
+</script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-cream">
+  <div class="flex">
+    <div id="sidebar-mount"></div>
+
+    <main class="flex-1 p-8 max-w-6xl h-screen overflow-y-auto">
+      <h1 class="font-display font-bold text-2xl text-ink mb-1">Billing</h1>
+      <p class="text-slate-500 text-sm mb-8">Generate bills for served orders, then collect payment.</p>
+
+      <h2 class="font-display font-semibold text-base text-ink mb-3">Awaiting bill</h2>
+      <div id="unbilled-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
+        <p class="text-slate-400 text-sm">Loading…</p>
+      </div>
+
+      <h2 class="font-display font-semibold text-base text-ink mb-3">Recent bills</h2>
+      <div id="bills-list" class="space-y-3"></div>
+    </main>
+  </div>
+
+  <!-- Bill detail / payment modal -->
+  <div id="bill-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-40 p-4">
+    <div class="bg-white rounded-xl w-full max-w-sm p-6" id="bill-modal-content"></div>
+  </div>
+
+<script src="js/common.js"></script>
+<script>
+async function loadUnbilled() {
+  try {
+    const orders = await apiFetch('/orders.php?status=served');
+    const el = document.getElementById('unbilled-list');
+    el.innerHTML = orders.length ? orders.map(o => `
+      <div class="ticket-card p-4 status-served">
+        <p class="font-mono-tag text-xs text-slate-500">#${o.id}</p>
+        <p class="font-semibold text-ink">Table ${o.table_number}</p>
+        <p class="text-xs text-slate-500 mb-3">${formatMoney(o.order_total)}</p>
+        <button onclick="generateBill(${o.id})" class="w-full bg-ink hover:bg-black text-white text-xs font-semibold py-2 rounded-lg">
+          Generate bill
+        </button>
+      </div>
+    `).join('') : `<p class="text-slate-400 text-sm">No served orders waiting for billing.</p>`;
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+let billingInProgress = false;
+async function generateBill(orderId) {
+  if (billingInProgress) return;
+  billingInProgress = true;
+  try {
+    const bill = await apiFetch('/bills.php', {
+      method: 'POST',
+      body: JSON.stringify({ order_id: orderId, tax_percent: 5, discount: 0 }),
+    });
+    toast('Bill generated');
+    showBillModal(bill.id);
+    loadUnbilled();
+    loadBills();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { billingInProgress = false; }
+}
+
+let payInProgress = false;
+async function payBill(id, method) {
+  if (payInProgress) return;
+  payInProgress = true;
+  try {
+    await apiFetch(`/bills.php?id=${id}`, { method: 'PUT', body: JSON.stringify({ payment_method: method }) });
+    toast('Payment recorded');
+    closeBillModal();
+    loadBills();
+    loadUnbilled();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { payInProgress = false; }
+}
+
+
+async function loadBills() {
+  try {
+    const bills = await apiFetch('/bills.php');
+    const el = document.getElementById('bills-list');
+    el.innerHTML = bills.length ? bills.map(b => `
+      <div class="ticket-card p-4 flex items-center justify-between cursor-pointer" onclick="showBillModal(${b.id})">
+        <div>
+          <p class="font-semibold text-ink text-sm">Table ${b.table_number} <span class="text-slate-400 font-normal">· Order #${b.order_id}</span></p>
+          <p class="text-xs text-slate-500 font-mono-tag">${formatMoney(b.total)} · ${new Date(b.created_at.replace(' ','T')).toLocaleString('en-IN', {dateStyle:'medium', timeStyle:'short'})}</p>
+        </div>
+        ${b.is_paid
+          ? '<span class="stamp-paid text-xs">PAID</span>'
+          : '<span class="stamp-unpaid text-xs">UNPAID</span>'}
+      </div>
+    `).join('') : `<p class="text-slate-400 text-sm">No bills yet.</p>`;
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function showBillModal(billId) {
+  try {
+    const bills = await apiFetch('/bills.php');
+    const bill = bills.find(b => b.id === billId) || await apiFetch(`/bills.php?order_id=${billId}`);
+
+    const content = document.getElementById('bill-modal-content');
+    content.innerHTML = `
+      <div class="text-center mb-4">
+        <p class="font-display font-bold text-lg text-ink">Bill #${bill.id}</p>
+        <p class="text-xs text-slate-500">Table ${bill.table_number} · Order #${bill.order_id}</p>
+      </div>
+      <div class="border-t border-dashed border-gray-300 my-3"></div>
+      <div class="space-y-1 text-sm font-mono-tag">
+        <div class="flex justify-between"><span class="text-slate-500">Subtotal</span><span>${formatMoney(bill.subtotal ?? (bill.total))}</span></div>
+      </div>
+      <div class="border-t border-dashed border-gray-300 my-3"></div>
+      <div class="flex justify-between font-display font-bold text-lg text-ink mb-4">
+        <span>Total</span><span>${formatMoney(bill.total)}</span>
+      </div>
+      <div class="text-center mb-4">
+        ${bill.is_paid ? '<span class="stamp-paid">PAID</span>' : '<span class="stamp-unpaid">UNPAID</span>'}
+      </div>
+      ${bill.is_paid ? '' : `
+        <div class="grid grid-cols-3 gap-2 mb-3">
+          <button onclick="payBill(${bill.id}, 'cash')" class="border border-gray-300 hover:border-amber-500 text-xs font-semibold py-2 rounded-lg">Cash</button>
+          <button onclick="payBill(${bill.id}, 'card')" class="border border-gray-300 hover:border-amber-500 text-xs font-semibold py-2 rounded-lg">Card</button>
+          <button onclick="payBill(${bill.id}, 'upi')" class="border border-gray-300 hover:border-amber-500 text-xs font-semibold py-2 rounded-lg">UPI</button>
+        </div>
+      `}
+      <button onclick="closeBillModal()" class="w-full text-slate-500 text-sm font-medium py-2">Close</button>
+    `;
+    document.getElementById('bill-modal').classList.remove('hidden');
+    document.getElementById('bill-modal').classList.add('flex');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function closeBillModal() {
+  document.getElementById('bill-modal').classList.add('hidden');
+  document.getElementById('bill-modal').classList.remove('flex');
+}
+
+async function payBill(id, method) {
+  try {
+    await apiFetch(`/bills.php?id=${id}`, { method: 'PUT', body: JSON.stringify({ payment_method: method }) });
+    toast('Payment recorded');
+    closeBillModal();
+    loadBills();
+    loadUnbilled();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+(async function init() {
+  await requireAuth();
+  loadUnbilled();
+  loadBills();
+})();
+</script>
+</body>
+</html>
