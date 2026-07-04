@@ -8,7 +8,7 @@ ini_set('display_errors',0);
 error_reporting(0);
 
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'restaurant_db');
+define('DB_NAME', 'restauranat_db');
 define('DB_USER', 'root');
 define('DB_PASS', '');
 
